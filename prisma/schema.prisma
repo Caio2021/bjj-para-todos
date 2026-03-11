@@ -1,0 +1,154 @@
+// ============================================================
+// JJPT — Jiu-Jitsu para Todos
+// Prisma Schema — PostgreSQL (Supabase)
+// ============================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  // Connection pooling via Supavisor (use em queries normais)
+  url       = env("DATABASE_URL")
+  // Direct connection (use em migrations: prisma migrate dev)
+  directUrl = env("DIRECT_URL")
+}
+
+// ─── ENUMS ───────────────────────────────────────────────────────────────────
+
+enum Perfil {
+  PROFESSOR
+  ALUNO
+}
+
+enum StatusAluno {
+  ATIVO
+  INATIVO
+  TRANCADO
+}
+
+enum StatusPagamento {
+  EM_DIA
+  PENDENTE
+  ATRASADO
+}
+
+enum StatusComprovante {
+  PENDENTE
+  APROVADO
+  REJEITADO
+}
+
+// ─── MODELS ──────────────────────────────────────────────────────────────────
+
+/// Espelha auth.users do Supabase. Criado via trigger após signup.
+model User {
+  id        String   @id @db.Uuid          // mesmo UUID do Supabase Auth
+  email     String   @unique
+  nome      String
+  perfil    Perfil
+  avatarUrl String?
+  criadoEm  DateTime @default(now()) @map("criado_em")
+  atualizadoEm DateTime @updatedAt       @map("atualizado_em")
+
+  // Relações
+  aluno           Aluno?
+  alunosCriados   Aluno[]      @relation("ProfessorAlunos")
+  pagamentosRevisados Pagamento[] @relation("ProfessorRevisou")
+
+  @@map("users")
+}
+
+model Aluno {
+  id          String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId      String      @unique @db.Uuid @map("user_id")
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Faixa: 0=Branca 1=Cinza 2=Amarela 3=Laranja 4=Verde
+  // (sistema infantil — adaptar para adulto se necessário)
+  faixa       Int         @default(0)
+  grau        Int         @default(0)    // 0-4 graus por faixa
+  aulasNoGrau Int         @default(0) @map("aulas_no_grau")
+  totalAulas  Int         @default(0) @map("total_aulas")
+
+  status      StatusAluno      @default(ATIVO)
+  statusPgto  StatusPagamento  @default(PENDENTE) @map("status_pgto")
+
+  // Professor responsável por este aluno
+  professorId String      @db.Uuid @map("professor_id")
+  professor   User        @relation("ProfessorAlunos", fields: [professorId], references: [id])
+
+  criadoEm    DateTime    @default(now()) @map("criado_em")
+  atualizadoEm DateTime   @updatedAt      @map("atualizado_em")
+
+  // Relações
+  checkins   Checkin[]
+  pagamentos Pagamento[]
+
+  @@map("alunos")
+}
+
+model Checkin {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  alunoId    String    @db.Uuid @map("aluno_id")
+  aluno      Aluno     @relation(fields: [alunoId], references: [id], onDelete: Cascade)
+
+  data       DateTime  @db.Date           // data da aula (sem hora)
+  hora       String?                      // "19:00"
+  aulaLabel  String?   @map("aula_label") // "Treino Noturno — Terça"
+
+  // QR Code: token gerado pelo professor para a aula
+  qrToken    String?   @map("qr_token")
+
+  confirmado   Boolean   @default(false)
+  confirmedAt  DateTime? @map("confirmed_at")
+  confirmedBy  String?   @db.Uuid @map("confirmed_by") // professor que confirmou
+
+  criadoEm   DateTime  @default(now()) @map("criado_em")
+
+  // Garante 1 checkin por aluno por dia
+  @@unique([alunoId, data])
+  @@map("checkins")
+}
+
+model Pagamento {
+  id          String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  alunoId     String             @db.Uuid @map("aluno_id")
+  aluno       Aluno              @relation(fields: [alunoId], references: [id], onDelete: Cascade)
+
+  valor       Decimal            @db.Decimal(10, 2)
+  descricao   String             // "Mensalidade Março/2025"
+  referencia  String?            // "2025-03" (mês de referência)
+
+  status      StatusComprovante  @default(PENDENTE)
+
+  // Supabase Storage
+  arquivoUrl  String             @map("arquivo_url")   // URL pública assinada
+  arquivoPath String             @map("arquivo_path")  // path interno do bucket
+
+  // Revisão pelo professor
+  revisadoPor String?   @db.Uuid @map("revisado_por")
+  professor   User?     @relation("ProfessorRevisou", fields: [revisadoPor], references: [id])
+  revisadoEm  DateTime? @map("revisado_em")
+  motivoRejeicao String? @map("motivo_rejeicao")
+
+  criadoEm    DateTime  @default(now()) @map("criado_em")
+  atualizadoEm DateTime @updatedAt      @map("atualizado_em")
+
+  @@map("pagamentos")
+}
+
+/// Sessões de aula — professor cria, alunos fazem checkin via QR
+model Aula {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  label     String                          // "Treino Noturno"
+  data      DateTime @db.Date
+  hora      String                          // "19:00"
+  qrToken   String   @unique @map("qr_token") // token único para o QR Code
+  ativa     Boolean  @default(true)         // professor encerra ao fim da aula
+  criadoPor String   @db.Uuid @map("criado_por")
+  criadoEm  DateTime @default(now()) @map("criado_em")
+
+  @@map("aulas")
+}

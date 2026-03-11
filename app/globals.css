@@ -1,0 +1,69 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --red:        #dc2626;
+  --red-dim:    #7f1d1d;
+  --red-glow:   rgba(220, 38, 38, 0.2);
+  --bg:         #0a0a0a;
+  --card:       #111111;
+  --border:     #1f1f1f;
+  --border-hover: #3a1010;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  background: var(--bg);
+  font-family: var(--font-dm), sans-serif;
+}
+
+.font-display { font-family: var(--font-syne), sans-serif; }
+
+/* Scrollbar sutil */
+::-webkit-scrollbar       { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #2a2a2a; border-radius: 2px; }
+
+/* Card hover */
+.card-hover {
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.card-hover:hover {
+  border-color: var(--border-hover) !important;
+  box-shadow: 0 0 0 1px var(--border-hover);
+}
+
+/* Animação de entrada suave */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.fade-up { animation: fadeUp 0.35s ease forwards; }
+.fade-up-1 { animation: fadeUp 0.35s 0.05s ease both; }
+.fade-up-2 { animation: fadeUp 0.35s 0.10s ease both; }
+.fade-up-3 { animation: fadeUp 0.35s 0.15s ease both; }
+.fade-up-4 { animation: fadeUp 0.35s 0.20s ease both; }
+.fade-up-5 { animation: fadeUp 0.35s 0.25s ease both; }
+
+/* Shimmer skeleton */
+@keyframes shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position:  200% 0; }
+}
+.skeleton {
+  background: linear-gradient(90deg, #1a1a1a 25%, #2a2a2a 50%, #1a1a1a 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 8px;
+}
+
+/* Glow vermelho */
+.red-glow { box-shadow: 0 0 24px var(--red-glow); }
+.red-glow-lg { box-shadow: 0 0 48px rgba(220,38,38,0.25); }
+
+/* Belt progress glow dinâmico */
+.belt-progress-bar {
+  transition: width 0.8s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
