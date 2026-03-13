@@ -1,29 +1,27 @@
-import { createServerClient } from '@/lib/supabase/server'
+import { redirect } from 'next/navigation'
+import { getDevSession } from '@/lib/dev-session'
+import { prisma } from '@/lib/prisma'
 import { Avatar, Badge, Card, SectionHeader, EmptyState } from '@/components/ui'
 import RevisarPagamentoBtn from '@/components/professor/RevisarPagamentoBtn'
 
 export default async function ProfPagamentosPage() {
-  const supabase = await createServerClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const session = await getDevSession()
+  if (!session) redirect('/login')
 
-  const { data: alunos } = await supabase
-    .from('alunos').select('id').eq('professor_id', user!.id)
-  const ids = (alunos ?? []).map(a => a.id)
+  const alunosDoProfessor = await prisma.aluno.findMany({
+    where: { professorId: session.id },
+    select: { id: true },
+  })
+  const ids = alunosDoProfessor.map(a => a.id)
 
-  const { data: pagamentos } = await supabase
-    .from('pagamentos')
-    .select(`
-      id, valor, descricao, status, arquivo_url, arquivo_path, criado_em,
-      alunos!pagamentos_aluno_id_fkey (
-        id,
-        users!alunos_user_id_fkey (nome)
-      )
-    `)
-    .in('aluno_id', ids.length ? ids : ['none'])
-    .order('criado_em', { ascending: false })
+  const pagamentos = await prisma.pagamento.findMany({
+    where: { alunoId: { in: ids.length ? ids : ['none'] } },
+    include: { aluno: { include: { user: { select: { nome: true } } } } },
+    orderBy: { criadoEm: 'desc' },
+  })
 
-  const pendentes = (pagamentos ?? []).filter(p => p.status === 'PENDENTE')
-  const outros    = (pagamentos ?? []).filter(p => p.status !== 'PENDENTE')
+  const pendentes = pagamentos.filter(p => p.status === 'PENDENTE')
+  const outros    = pagamentos.filter(p => p.status !== 'PENDENTE')
 
   return (
     <div className="space-y-6 py-4">
@@ -33,7 +31,7 @@ export default async function ProfPagamentosPage() {
         {pendentes.length === 0 && <EmptyState icon="🎉" message="Nenhum comprovante pendente." />}
         <div className="space-y-3">
           {pendentes.map(p => {
-            const nome = (p.alunos as any)?.users?.nome ?? '?'
+            const nome = p.aluno.user.nome
             return (
               <Card key={p.id} className="space-y-3">
                 <div className="flex items-start gap-3">
@@ -43,7 +41,7 @@ export default async function ProfPagamentosPage() {
                       <span className="font-semibold text-sm text-zinc-100">{nome}</span>
                       <Badge status={p.status} />
                     </div>
-                    <p className="text-xs text-zinc-500">{p.descricao} · {new Date(p.criado_em).toLocaleDateString('pt-BR')}</p>
+                    <p className="text-xs text-zinc-500">{p.descricao} · {new Date(p.criadoEm).toLocaleDateString('pt-BR')}</p>
                   </div>
                   <span className="font-display font-black text-lg text-emerald-400">
                     R${Number(p.valor).toFixed(2).replace('.', ',')}
@@ -52,14 +50,14 @@ export default async function ProfPagamentosPage() {
 
                 {/* Comprovante */}
                 <a
-                  href={p.arquivo_url}
+                  href={p.arquivoUrl}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="flex items-center gap-3 bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2.5 hover:border-zinc-700 transition-colors"
                 >
                   <div className="w-9 h-9 bg-zinc-800 rounded-lg flex items-center justify-center text-lg">🖼</div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs font-semibold text-zinc-300 truncate">{p.arquivo_path.split('/').pop()}</p>
+                    <p className="text-xs font-semibold text-zinc-300 truncate">{p.arquivoPath.split('/').pop()}</p>
                     <p className="text-[11px] text-zinc-600">Comprovante PIX · clique para ver</p>
                   </div>
                   <svg className="w-4 h-4 text-zinc-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -67,7 +65,7 @@ export default async function ProfPagamentosPage() {
                   </svg>
                 </a>
 
-                <RevisarPagamentoBtn pagamentoId={p.id} alunoId={(p.alunos as any)?.id} />
+                <RevisarPagamentoBtn pagamentoId={p.id} alunoId={p.aluno.id} />
               </Card>
             )
           })}
@@ -80,7 +78,7 @@ export default async function ProfPagamentosPage() {
           <SectionHeader label="Histórico" />
           <div className="space-y-2">
             {outros.map(p => {
-              const nome = (p.alunos as any)?.users?.nome ?? '?'
+              const nome = p.aluno.user.nome
               return (
                 <Card key={p.id} className="flex items-center gap-3 !py-3">
                   <Avatar name={nome} size="sm" />

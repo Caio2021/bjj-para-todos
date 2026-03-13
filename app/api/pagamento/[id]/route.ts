@@ -1,42 +1,33 @@
-import { createServerClient } from '@/lib/supabase/server'
+import { getDevSession } from '@/lib/dev-session'
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { revisarPagamentoSchema } from '@/lib/validations'
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  const supabase = await createServerClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-  const profile = await prisma.user.findUnique({ where: { id: user.id }, select: { perfil: true } })
-  if (profile?.perfil !== 'PROFESSOR') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  const session = await getDevSession()
+  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if (session.perfil !== 'PROFESSOR') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const body = revisarPagamentoSchema.safeParse(await req.json())
   if (!body.success) return NextResponse.json({ error: 'Invalid' }, { status: 400 })
 
-  // Verifica que o pagamento é de um aluno do professor
   const pagamento = await prisma.pagamento.findFirst({
-    where: {
-      id,
-      aluno: { professorId: user.id },
-    },
+    where: { id, aluno: { professorId: session.id } },
     include: { aluno: { include: { user: true } } },
   })
   if (!pagamento) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-  // Atualiza pagamento
   const updated = await prisma.pagamento.update({
     where: { id },
     data: {
       status:         body.data.acao,
-      revisadoPor:    user.id,
+      revisadoPor:    session.id,
       revisadoEm:     new Date(),
       motivoRejeicao: body.data.motivoRejeicao,
     },
   })
 
-  // Atualiza status do aluno
   if (body.data.acao === 'APROVADO') {
     await prisma.aluno.update({
       where: { id: pagamento.alunoId },

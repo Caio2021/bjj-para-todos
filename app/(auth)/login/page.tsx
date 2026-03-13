@@ -1,41 +1,28 @@
-'use client'
+import { cookies } from 'next/headers'
+import { redirect } from 'next/navigation'
 
-import { useState } from 'react'
-import { createClient } from '@/lib/supabase/client'
-import Link from 'next/link'
+async function escolherPerfil(formData: FormData) {
+  'use server'
+  const perfil = formData.get('perfil') as string
+  if (perfil !== 'PROFESSOR' && perfil !== 'ALUNO') return
+
+  const cookieStore = await cookies()
+  cookieStore.set('dev_perfil', perfil, { path: '/', maxAge: 60 * 60 * 24 * 30 })
+  redirect(perfil === 'PROFESSOR' ? '/professor' : '/aluno')
+}
 
 export default function LoginPage() {
-  const [email, setEmail] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [sent, setSent] = useState(false)
-  const [error, setError] = useState('')
-  const supabase = createClient()
-
-  async function handleLogin(e: React.FormEvent) {
-    e.preventDefault()
-    setLoading(true)
-    setError('')
-
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
-      options: {
-        emailRedirectTo: `${window.location.origin}/auth/callback`,
-      },
-    })
-
-    if (error) {
-      setError(error.message)
-    } else {
-      setSent(true)
-    }
-    setLoading(false)
-  }
-
   return (
     <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center p-5">
       {/* Background grid */}
-      <div className="fixed inset-0 opacity-[0.03]"
-        style={{ backgroundImage: 'linear-gradient(#fff 1px,transparent 1px),linear-gradient(90deg,#fff 1px,transparent 1px)', backgroundSize: '40px 40px' }} />
+      <div
+        className="fixed inset-0 opacity-[0.03]"
+        style={{
+          backgroundImage:
+            'linear-gradient(#fff 1px,transparent 1px),linear-gradient(90deg,#fff 1px,transparent 1px)',
+          backgroundSize: '40px 40px',
+        }}
+      />
 
       <div className="relative w-full max-w-sm fade-up">
         {/* Logo */}
@@ -46,64 +33,27 @@ export default function LoginPage() {
           <h1 className="font-display text-3xl font-black text-zinc-50 mb-1">
             Jiu-Jitsu para Todos
           </h1>
-          <p className="text-zinc-500 text-sm">Entre com seu e-mail para continuar</p>
+          <p className="text-zinc-500 text-sm">Escolha como deseja entrar</p>
         </div>
 
-        {sent ? (
-          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-8 text-center">
-            <div className="text-5xl mb-4">📬</div>
-            <h2 className="font-display font-bold text-lg text-zinc-100 mb-2">
-              Verifique seu e-mail
-            </h2>
-            <p className="text-zinc-400 text-sm leading-relaxed">
-              Enviamos um link de acesso para <strong className="text-zinc-200">{email}</strong>.
-              Clique no link para entrar.
-            </p>
+        <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-8 space-y-4">
+          <form action={escolherPerfil}>
             <button
-              onClick={() => setSent(false)}
-              className="mt-6 text-sm text-red-400 hover:text-red-300 transition-colors"
+              name="perfil"
+              value="PROFESSOR"
+              className="w-full bg-red-700 hover:bg-red-600 text-white font-bold py-4 rounded-xl transition-colors red-glow text-sm mb-3"
             >
-              Usar outro e-mail
+              Entrar como Professor
             </button>
-          </div>
-        ) : (
-          <form onSubmit={handleLogin} className="bg-zinc-900 border border-zinc-800 rounded-2xl p-8 space-y-4">
-            <div>
-              <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-2">
-                E-mail
-              </label>
-              <input
-                type="email"
-                value={email}
-                onChange={e => setEmail(e.target.value)}
-                placeholder="seu@email.com"
-                required
-                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-zinc-100 text-sm placeholder:text-zinc-700 focus:outline-none focus:border-red-700 transition-colors"
-              />
-            </div>
-
-            {error && (
-              <p className="text-red-400 text-sm bg-red-950/50 border border-red-900 rounded-lg px-3 py-2">
-                {error}
-              </p>
-            )}
-
             <button
-              type="submit"
-              disabled={loading || !email}
-              className="w-full bg-red-700 hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3 rounded-xl transition-colors red-glow text-sm"
+              name="perfil"
+              value="ALUNO"
+              className="w-full bg-zinc-800 hover:bg-zinc-700 text-zinc-100 font-bold py-4 rounded-xl transition-colors text-sm"
             >
-              {loading ? 'Enviando...' : 'Entrar com magic link'}
+              Entrar como Aluno
             </button>
-
-            <p className="text-center text-xs text-zinc-600">
-              Não tem conta?{' '}
-              <Link href="/cadastro" className="text-red-400 hover:text-red-300 transition-colors">
-                Cadastre-se
-              </Link>
-            </p>
           </form>
-        )}
+        </div>
       </div>
     </div>
   )

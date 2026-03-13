@@ -1,25 +1,23 @@
-import { createServerClient } from '@/lib/supabase/server'
+import { redirect } from 'next/navigation'
+import { getDevSession } from '@/lib/dev-session'
+import { prisma } from '@/lib/prisma'
 import QRCodeAula from '@/components/professor/QRCodeAula'
 import CheckinManualList from '@/components/professor/CheckinManualList'
 
 export default async function ProfCheckinPage() {
-  const supabase = await createServerClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const session = await getDevSession()
+  if (!session) redirect('/login')
 
-  const { data: alunos } = await supabase
-    .from('alunos')
-    .select(`id, users!alunos_user_id_fkey (nome)`)
-    .eq('professor_id', user!.id)
-    .eq('status', 'ATIVO')
-    .order('criado_em')
+  const alunos = await prisma.aluno.findMany({
+    where: { professorId: session.id, status: 'ATIVO' },
+    include: { user: { select: { nome: true } } },
+    orderBy: { criadoEm: 'asc' },
+  })
 
   return (
     <div className="space-y-6 py-4">
-      <QRCodeAula professorId={user!.id} />
-      <CheckinManualList alunos={(alunos ?? []).map(a => ({
-        id: a.id,
-        nome: (a.users as any)?.nome ?? '?',
-      }))} />
+      <QRCodeAula professorId={session.id} />
+      <CheckinManualList alunos={alunos.map(a => ({ id: a.id, nome: a.user.nome }))} />
     </div>
   )
 }

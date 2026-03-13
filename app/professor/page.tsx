@@ -1,67 +1,62 @@
-import { createServerClient } from '@/lib/supabase/server'
+import { redirect } from 'next/navigation'
+import { getDevSession } from '@/lib/dev-session'
+import { prisma } from '@/lib/prisma'
 import { Badge, Avatar, Card, SectionHeader, StatCard, EmptyState } from '@/components/ui'
 import ConfirmarCheckinBtn from '@/components/professor/ConfirmarCheckinBtn'
-import Link from 'next/link'
 
-const FAIXAS = ['Branca','Cinza','Amarela','Laranja','Verde']
+const FAIXAS    = ['Branca','Cinza','Amarela','Laranja','Verde']
 const FAIXA_COR = ['#e5e7eb','#9ca3af','#fbbf24','#f97316','#22c55e']
 const AULAS_POR_GRAU = [40,50,60,70,80]
 
 export default async function ProfessorPage() {
-  const supabase = await createServerClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const session = await getDevSession()
+  if (!session) redirect('/login')
 
-  // Busca alunos do professor
-  const { data: alunos } = await supabase
-    .from('alunos')
-    .select(`
-      id, faixa, grau, aulas_no_grau, total_aulas, status, status_pgto,
-      users!alunos_user_id_fkey (nome, email, avatar_url)
-    `)
-    .eq('professor_id', user!.id)
-    .order('criado_em', { ascending: false })
+  const alunos = await prisma.aluno.findMany({
+    where: { professorId: session.id },
+    include: { user: { select: { nome: true, email: true } } },
+    orderBy: { criadoEm: 'desc' },
+  })
 
-  // Checkins pendentes de confirmação
-  const alunoIds = (alunos ?? []).map(a => a.id)
-  const { data: checkinsPendentes } = await supabase
-    .from('checkins')
-    .select(`id, data, hora, aula_label, aluno_id`)
-    .in('aluno_id', alunoIds.length ? alunoIds : ['none'])
-    .eq('confirmado', false)
-    .order('criado_em', { ascending: false })
+  const alunoIds = alunos.map(a => a.id)
 
-  // Pagamentos pendentes
-  const { data: pgPendentes } = await supabase
-    .from('pagamentos')
-    .select('id')
-    .in('aluno_id', alunoIds.length ? alunoIds : ['none'])
-    .eq('status', 'PENDENTE')
+  const checkinsPendentes = await prisma.checkin.findMany({
+    where: { alunoId: { in: alunoIds.length ? alunoIds : ['none'] }, confirmado: false },
+    orderBy: { criadoEm: 'desc' },
+  })
 
-  const ativos   = (alunos ?? []).filter(a => a.status === 'ATIVO').length
-  const nomeMap  = Object.fromEntries((alunos ?? []).map(a => [a.id, (a.users as any)?.nome ?? '?']))
+  const pgPendentes = await prisma.pagamento.findMany({
+    where: { alunoId: { in: alunoIds.length ? alunoIds : ['none'] }, status: 'PENDENTE' },
+    select: { id: true },
+  })
+
+  const ativos  = alunos.filter(a => a.status === 'ATIVO').length
+  const nomeMap = Object.fromEntries(alunos.map(a => [a.id, a.user.nome]))
 
   return (
     <div className="space-y-6 py-4">
       {/* Stats */}
       <div className="grid grid-cols-3 gap-2 fade-up">
-        <StatCard label="Alunos ativos"   value={ativos}                          color="text-emerald-400" />
-        <StatCard label="Check-ins"       value={checkinsPendentes?.length ?? 0}  color="text-amber-400"   />
-        <StatCard label="Pgtos pend."     value={pgPendentes?.length ?? 0}         color="text-red-400"    />
+        <StatCard label="Alunos ativos" value={ativos}                         color="text-emerald-400" />
+        <StatCard label="Check-ins"     value={checkinsPendentes.length}       color="text-amber-400"  />
+        <StatCard label="Pgtos pend."   value={pgPendentes.length}             color="text-red-400"    />
       </div>
 
       {/* Check-ins pendentes */}
-      {(checkinsPendentes?.length ?? 0) > 0 && (
+      {checkinsPendentes.length > 0 && (
         <div className="fade-up-1">
-          <SectionHeader label={`Check-ins pendentes (${checkinsPendentes!.length})`} />
+          <SectionHeader label={`Check-ins pendentes (${checkinsPendentes.length})`} />
           <div className="space-y-2">
-            {checkinsPendentes!.map(c => (
+            {checkinsPendentes.map(c => (
               <Card key={c.id} className="flex items-center gap-3 !py-3">
-                <Avatar name={nomeMap[c.aluno_id] ?? '?'} size="sm" />
+                <Avatar name={nomeMap[c.alunoId] ?? '?'} size="sm" />
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-zinc-200 truncate">{nomeMap[c.aluno_id]}</p>
-                  <p className="text-xs text-zinc-600">{c.data} · {c.hora ?? ''} {c.aula_label ? `· ${c.aula_label}` : ''}</p>
+                  <p className="text-sm font-semibold text-zinc-200 truncate">{nomeMap[c.alunoId]}</p>
+                  <p className="text-xs text-zinc-600">
+                    {c.data.toISOString().split('T')[0]} · {c.hora ?? ''} {c.aulaLabel ? `· ${c.aulaLabel}` : ''}
+                  </p>
                 </div>
-                <ConfirmarCheckinBtn checkinId={c.id} alunoId={c.aluno_id} />
+                <ConfirmarCheckinBtn checkinId={c.id} alunoId={c.alunoId} />
               </Card>
             ))}
           </div>
@@ -71,29 +66,28 @@ export default async function ProfessorPage() {
       {/* Lista de alunos */}
       <div className="fade-up-2">
         <SectionHeader
-          label={`Alunos (${alunos?.length ?? 0})`}
+          label={`Alunos (${alunos.length})`}
           action="+ Novo"
           onAction={() => {}}
         />
         <div className="space-y-2">
-          {(alunos?.length ?? 0) === 0 && (
+          {alunos.length === 0 && (
             <EmptyState icon="🥋" message="Nenhum aluno cadastrado ainda." />
           )}
-          {(alunos ?? []).map(a => {
-            const nome = (a.users as any)?.nome ?? '?'
-            const cor  = FAIXA_COR[a.faixa] ?? '#e5e7eb'
-            const pct  = Math.min(100, Math.round(a.aulas_no_grau / (AULAS_POR_GRAU[a.faixa] ?? 40) * 100))
+          {alunos.map(a => {
+            const cor = FAIXA_COR[a.faixa] ?? '#e5e7eb'
+            const pct = Math.min(100, Math.round(a.aulasNoGrau / (AULAS_POR_GRAU[a.faixa] ?? 40) * 100))
             return (
               <Card key={a.id} className="flex items-center gap-3">
-                <Avatar name={nome} />
+                <Avatar name={a.user.nome} />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1 flex-wrap">
-                    <span className="text-sm font-semibold text-zinc-100 truncate">{nome}</span>
+                    <span className="text-sm font-semibold text-zinc-100 truncate">{a.user.nome}</span>
                     <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border"
                       style={{ color: cor, borderColor: cor + '55', background: cor + '11' }}>
                       {FAIXAS[a.faixa]} · {a.grau}° grau
                     </span>
-                    <Badge status={a.status_pgto} />
+                    <Badge status={a.statusPgto} />
                   </div>
                   <div className="flex items-center gap-2">
                     <div className="flex-1 h-1.5 bg-zinc-900 rounded-full overflow-hidden">

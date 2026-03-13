@@ -1,20 +1,20 @@
-import { createServerClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
+import { getDevSession } from '@/lib/dev-session'
+import { prisma } from '@/lib/prisma'
 import { Card } from '@/components/ui'
 
+const FAIXAS = ['Branca','Cinza','Amarela','Laranja','Verde']
+
 export default async function AlunoQRPage() {
-  const supabase = await createServerClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/login')
+  const session = await getDevSession()
+  if (!session) redirect('/login')
 
-  const { data: profile } = await supabase.from('users').select('nome').eq('id', user.id).single()
-  const { data: aluno }   = await supabase.from('alunos').select('id, faixa').eq('user_id', user.id).single()
+  const aluno = await prisma.aluno.findUnique({
+    where: { userId: session.id },
+    select: { id: true, faixa: true },
+  })
 
-  const FAIXAS = ['Branca','Cinza','Amarela','Laranja','Verde']
-  const qrValue = `jjpt:aluno:${aluno?.id ?? user.id}`
-
-  // Gera URL do QR via API route
-  const qrUrl = `/api/qr/aluno/${aluno?.id ?? user.id}`
+  const qrUrl = `/api/qr/aluno/${aluno?.id ?? session.id}`
 
   return (
     <div className="space-y-5 py-4">
@@ -29,7 +29,7 @@ export default async function AlunoQRPage() {
         </div>
 
         <div>
-          <p className="font-display font-bold text-lg text-zinc-100">{profile?.nome}</p>
+          <p className="font-display font-bold text-lg text-zinc-100">{session.nome}</p>
           <p className="text-sm text-zinc-500 mt-0.5">Faixa {FAIXAS[aluno?.faixa ?? 0]}</p>
         </div>
       </Card>

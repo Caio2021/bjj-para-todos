@@ -1,14 +1,10 @@
 import { redirect } from 'next/navigation'
-import { createServerClient } from '@/lib/supabase/server'
+import { getDevSession } from '@/lib/dev-session'
 import ProfNav from '@/components/professor/ProfNav'
 
 export default async function ProfessorLayout({ children }: { children: React.ReactNode }) {
-  const supabase = await createServerClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/login')
-
-  const { data: profile } = await supabase
-    .from('users').select('nome, perfil').eq('id', user.id).single()
+  const session = await getDevSession()
+  if (!session) redirect('/login')
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] flex flex-col max-w-[430px] mx-auto">
@@ -22,7 +18,7 @@ export default async function ProfessorLayout({ children }: { children: React.Re
               <span className="text-[11px] font-bold text-zinc-600 uppercase tracking-[0.1em]">Professor</span>
             </div>
             <h1 className="font-display text-lg font-black text-zinc-50">
-              {profile?.nome?.split(' ')[0] ?? 'Professor'}
+              {session.nome.split(' ')[0]}
             </h1>
           </div>
           <form action="/api/auth/signout" method="POST">

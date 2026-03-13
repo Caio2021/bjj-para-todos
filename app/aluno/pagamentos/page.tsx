@@ -1,21 +1,23 @@
-import { createServerClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
+import { getDevSession } from '@/lib/dev-session'
+import { prisma } from '@/lib/prisma'
 import { Badge, Card, SectionHeader, EmptyState } from '@/components/ui'
 import UploadComprovante from '@/components/aluno/UploadComprovante'
 
 export default async function AlunoPagamentosPage() {
-  const supabase = await createServerClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/login')
+  const session = await getDevSession()
+  if (!session) redirect('/login')
 
-  const { data: aluno } = await supabase
-    .from('alunos').select('id, status_pgto').eq('user_id', user.id).single()
+  const aluno = await prisma.aluno.findUnique({
+    where: { userId: session.id },
+    select: { id: true, statusPgto: true },
+  })
 
-  const { data: pagamentos } = await supabase
-    .from('pagamentos')
-    .select('id, valor, descricao, status, criado_em, motivo_rejeicao')
-    .eq('aluno_id', aluno?.id ?? 'none')
-    .order('criado_em', { ascending: false })
+  const pagamentos = await prisma.pagamento.findMany({
+    where: { alunoId: aluno?.id ?? 'none' },
+    orderBy: { criadoEm: 'desc' },
+    select: { id: true, valor: true, descricao: true, status: true, criadoEm: true, motivoRejeicao: true },
+  })
 
   return (
     <div className="space-y-5 py-4">
@@ -30,21 +32,21 @@ export default async function AlunoPagamentosPage() {
 
       {/* Upload */}
       <div className="fade-up-1">
-        <UploadComprovante alunoId={aluno?.id ?? ''} userId={user.id} />
+        <UploadComprovante alunoId={aluno?.id ?? ''} userId={session.id} />
       </div>
 
       {/* Histórico */}
       <div className="fade-up-2">
         <SectionHeader label="Meus pagamentos" />
-        {(pagamentos?.length ?? 0) === 0 && <EmptyState icon="💳" message="Nenhum pagamento registrado ainda." />}
+        {pagamentos.length === 0 && <EmptyState icon="💳" message="Nenhum pagamento registrado ainda." />}
         <div className="space-y-2">
-          {(pagamentos ?? []).map(p => (
+          {pagamentos.map(p => (
             <Card key={p.id} className="flex items-start gap-3 !py-3">
               <div className="flex-1">
                 <p className="text-sm font-semibold text-zinc-200">{p.descricao}</p>
-                <p className="text-xs text-zinc-600">{new Date(p.criado_em).toLocaleDateString('pt-BR')}</p>
-                {p.status === 'REJEITADO' && p.motivo_rejeicao && (
-                  <p className="text-xs text-red-400 mt-1">Motivo: {p.motivo_rejeicao}</p>
+                <p className="text-xs text-zinc-600">{new Date(p.criadoEm).toLocaleDateString('pt-BR')}</p>
+                {p.status === 'REJEITADO' && p.motivoRejeicao && (
+                  <p className="text-xs text-red-400 mt-1">Motivo: {p.motivoRejeicao}</p>
                 )}
               </div>
               <div className="text-right flex flex-col items-end gap-1">

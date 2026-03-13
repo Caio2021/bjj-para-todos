@@ -1,4 +1,4 @@
-import { createServerClient } from '@/lib/supabase/server'
+import { getDevSession } from '@/lib/dev-session'
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import QRCode from 'qrcode'
@@ -12,9 +12,8 @@ const schema = z.object({
 })
 
 export async function POST(req: Request) {
-  const supabase = await createServerClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const session = await getDevSession()
+  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const body = schema.safeParse(await req.json())
   if (!body.success) return NextResponse.json({ error: 'Invalid' }, { status: 400 })
@@ -27,11 +26,10 @@ export async function POST(req: Request) {
       data:      new Date(body.data.data),
       hora:      body.data.hora,
       qrToken,
-      criadoPor: user.id,
+      criadoPor: session.id,
     },
   })
 
-  // Gera QR Code como data URL
   const qrCodeUrl = await QRCode.toDataURL(qrToken, {
     width: 200,
     margin: 1,
@@ -41,13 +39,12 @@ export async function POST(req: Request) {
   return NextResponse.json({ ...aula, qrCodeUrl }, { status: 201 })
 }
 
-export async function GET(req: Request) {
-  const supabase = await createServerClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+export async function GET() {
+  const session = await getDevSession()
+  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const aulas = await prisma.aula.findMany({
-    where: { criadoPor: user.id },
+    where: { criadoPor: session.id },
     orderBy: { criadoEm: 'desc' },
     take: 10,
   })
